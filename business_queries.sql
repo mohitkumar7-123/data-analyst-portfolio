@@ -1,3 +1,7 @@
+-- ====================
+-- DATABASE SETUP & TABLES
+-- ====================
+
 CREATE TABLE customers (
     customer_id INT PRIMARY KEY,
     customer_name VARCHAR(100),
@@ -7,7 +11,6 @@ CREATE TABLE customers (
 );
 
 -- PRODUCTS TABLE
-
 CREATE TABLE products (
     product_id INT PRIMARY KEY,
     product_name VARCHAR(100),
@@ -35,7 +38,6 @@ CREATE TABLE orders (
     FOREIGN KEY (product_id) REFERENCES products(product_id)
 );
 
-
 -- EMPLOYEES TABLE
 CREATE TABLE employees (
     employee_id INT PRIMARY KEY,
@@ -54,6 +56,10 @@ CREATE TABLE transactions (
     merchant_city VARCHAR(50),
     FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
 );
+
+-- ====================
+-- SAMPLE DATA INSERTION
+-- ====================
 
 -- INSERT CUSTOMERS
 INSERT INTO customers VALUES
@@ -111,8 +117,11 @@ INSERT INTO transactions VALUES
 (2011, 1, 50000, '2024-01-23', 'Refund', 'Mumbai'),
 (2012, 2, 20000, '2024-01-24', 'Refund', 'Delhi');
 
---Top 5 Products by Revenue
+-- ====================
+-- SALES ANALYSIS QUERIES
+-- ====================
 
+-- Top 5 Products by Revenue
 SELECT p.product_name,
 SUM(o.quantity* o.price) AS total_revenue
 FROM orders o 
@@ -121,8 +130,7 @@ GROUP BY p.product_name
 ORDER BY SUM(o.quantity * o.price) DESC
 LIMIT 5;
 
---Monthly Sales Trend
-
+-- Monthly Sales Trend
 SELECT 
     TO_CHAR(order_date, 'YYYY-MM') AS month,
     SUM(quantity * price) AS monthly_revenue
@@ -130,7 +138,21 @@ FROM orders
 GROUP BY TO_CHAR(order_date, 'YYYY-MM')
 ORDER BY month;
 
--- customer life time value 
+-- Daily Revenue Report
+SELECT 
+    DATE(order_date) as day,
+    SUM(quantity * price) as daily_revenue,
+    COUNT(DISTINCT order_id) as order_count,
+    ROUND(AVG(quantity * price), 2) as avg_order_value
+FROM orders
+GROUP BY DATE(order_date)
+ORDER BY day DESC;
+
+-- ====================
+-- CUSTOMER ANALYTICS QUERIES
+-- ====================
+
+-- Customer Lifetime Value
 SELECT 
 c.customer_id,c.customer_name,
 COUNT(DISTINCT order_id) as total_order,
@@ -140,12 +162,6 @@ FROM orders o
 JOIN customers c ON o.customer_id = c.customer_id
 GROUP BY c.customer_id,c.customer_id 
 ORDER BY total_spent DESC;
-
--- product never sold 
-SELECT p.product_id, p.product_name
-FROM products p
-LEFT JOIN orders o ON p.product_id = o.product_id
-WHERE o.product_id IS NULL;
 
 -- High Value Customers (top 10%)
 WITH customer_stats AS (
@@ -159,33 +175,6 @@ WITH customer_stats AS (
 SELECT customer_id, total_spent
 FROM customer_stats
 WHERE percentile = 1;
-
--- CUSTOMER RETENTION RATE
-
-CREATE TEMPORARY TABLE first_orders AS
-SELECT 
-    customer_id,
-    MIN(order_date) as first_order_date,
-    EXTRACT(YEAR FROM MIN(order_date)) as first_year
-FROM orders
-GROUP BY customer_id;
-
-CREATE TEMPORARY TABLE orders_with_year AS
-SELECT 
-    *,
-    EXTRACT(YEAR FROM order_date) as order_year
-FROM orders;
-SELECT
-    f.first_year,
-    COUNT(DISTINCT f.customer_id) AS total_customers,
-    COUNT(DISTINCT o.customer_id) AS retained_customers,
-    ROUND((COUNT(DISTINCT o.customer_id) * 100.0 / COUNT(DISTINCT f.customer_id)), 2) AS retention_rate
-FROM first_orders f
-LEFT JOIN orders_with_year o
-    ON f.customer_id = o.customer_id
-    AND o.order_year = f.first_year + 1
-GROUP BY f.first_year
-ORDER BY f.first_year;
 
 -- Customer Geographic Distribution
 SELECT 
@@ -215,6 +204,21 @@ JOIN customer_first_orders cfo ON o.customer_id = cfo.customer_id
 GROUP BY TO_CHAR(o.order_date, 'YYYY-MM')
 ORDER BY month;
 
+-- Customer Payment Behavior
+SELECT 
+    customer_id,
+    COUNT(*) as total_orders,
+    SUM(CASE WHEN payment_status = 'Paid' THEN 1 ELSE 0 END) as paid_orders,
+    SUM(CASE WHEN payment_status = 'Pending' THEN 1 ELSE 0 END) as pending_orders,
+    ROUND((SUM(CASE WHEN payment_status = 'Paid' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) as payment_success_rate
+FROM orders
+GROUP BY customer_id
+ORDER BY payment_success_rate ASC;
+
+-- ====================
+-- FRAUD DETECTION QUERIES
+-- ====================
+
 -- LARGE TRANSACTION ALERT 
 SELECT 
     transaction_id,
@@ -224,6 +228,20 @@ SELECT
 FROM transactions
 WHERE amount > (SELECT AVG(amount) * 3 FROM transactions)
 ORDER BY amount DESC;
+
+-- Rapid Successive Transactions
+SELECT 
+    customer_id,
+    COUNT(*) as transactions_count,
+    SUM(amount) as total_amount
+FROM transactions
+GROUP BY customer_id
+HAVING COUNT(*) > 3
+ORDER BY transactions_count DESC;
+
+-- ====================
+-- INVENTORY MANAGEMENT QUERIES
+-- ====================
 
 -- INVENTORY MANAGEMENT 
 SELECT 
@@ -245,18 +263,8 @@ WHERE o.order_date >= CURRENT_DATE - INTERVAL '90 DAYS'
 GROUP BY p.product_id, p.product_name, p.current_stock  
 HAVING COUNT(o.order_id) < 5  
 ORDER BY times_ordered ASC;
-  -- Rapid Successive Transactions
-SELECT 
-    customer_id,
-    COUNT(*) as transactions_count,
-    SUM(amount) as total_amount
-FROM transactions
-GROUP BY customer_id
-HAVING COUNT(*) > 3
-ORDER BY transactions_count DESC;
 
----Inventory Turnover Ratio
-
+-- Inventory Turnover Ratio
 SELECT 
     p.product_name,
     p.current_stock,
@@ -271,7 +279,11 @@ WHERE o.order_date >= CURRENT_DATE - INTERVAL '30 DAYS' OR o.order_id IS NULL
 GROUP BY p.product_id, p.product_name, p.current_stock
 ORDER BY turnover_ratio DESC;
 
---Profit Margin by Product
+-- ====================
+-- FINANCIAL ANALYSIS QUERIES
+-- ====================
+
+-- Profit Margin by Product
 SELECT 
     p.product_name,
     COALESCE(SUM(o.quantity * o.price), 0) as total_revenue,
@@ -287,28 +299,11 @@ LEFT JOIN orders o ON p.product_id = o.product_id
 GROUP BY p.product_id, p.product_name
 ORDER BY profit_margin DESC;
 
---DAILY REVENUE REPORT
-SELECT 
-    DATE(order_date) as day,
-    SUM(quantity * price) as daily_revenue,
-    COUNT(DISTINCT order_id) as order_count,
-    ROUND(AVG(quantity * price), 2) as avg_order_value
-FROM orders
-GROUP BY DATE(order_date)
-ORDER BY day DESC;
+-- ====================
+-- OPERATIONAL EFFICIENCY QUERIES
+-- ====================
 
----Customer Payment Behavior
-SELECT 
-    customer_id,
-    COUNT(*) as total_orders,
-    SUM(CASE WHEN payment_status = 'Paid' THEN 1 ELSE 0 END) as paid_orders,
-    SUM(CASE WHEN payment_status = 'Pending' THEN 1 ELSE 0 END) as pending_orders,
-    ROUND((SUM(CASE WHEN payment_status = 'Paid' THEN 1 ELSE 0 END) * 100.0 / COUNT(*)), 2) as payment_success_rate
-FROM orders
-GROUP BY customer_id
-ORDER BY payment_success_rate ASC;
-
---Employee Performance
+-- Employee Performance
 SELECT 
     e.employee_name,
     COUNT(o.order_id) as orders_processed,
@@ -319,7 +314,7 @@ LEFT JOIN orders o ON e.employee_id = o.employee_id
 GROUP BY e.employee_id, e.employee_name
 ORDER BY revenue_generated DESC;
 
---SHIPPING EFFECIENCY 
+-- SHIPPING EFFICIENCY 
 SELECT 
     shipping_method,
     COUNT(*) as total_orders,
@@ -330,8 +325,43 @@ FROM orders
 GROUP BY shipping_method
 ORDER BY avg_shipping_days ASC;
 
+-- ====================
+-- PRODUCT PERFORMANCE QUERIES
+-- ====================
 
+-- Product Never Sold 
+SELECT p.product_id, p.product_name
+FROM products p
+LEFT JOIN orders o ON p.product_id = o.product_id
+WHERE o.product_id IS NULL;
 
+-- ====================
+-- CUSTOMER RETENTION QUERIES
+-- ====================
 
+-- CUSTOMER RETENTION RATE
+CREATE TEMPORARY TABLE first_orders AS
+SELECT 
+    customer_id,
+    MIN(order_date) as first_order_date,
+    EXTRACT(YEAR FROM MIN(order_date)) as first_year
+FROM orders
+GROUP BY customer_id;
 
-  
+CREATE TEMPORARY TABLE orders_with_year AS
+SELECT 
+    *,
+    EXTRACT(YEAR FROM order_date) as order_year
+FROM orders;
+
+SELECT
+    f.first_year,
+    COUNT(DISTINCT f.customer_id) AS total_customers,
+    COUNT(DISTINCT o.customer_id) AS retained_customers,
+    ROUND((COUNT(DISTINCT o.customer_id) * 100.0 / COUNT(DISTINCT f.customer_id)), 2) AS retention_rate
+FROM first_orders f
+LEFT JOIN orders_with_year o
+    ON f.customer_id = o.customer_id
+    AND o.order_year = f.first_year + 1
+GROUP BY f.first_year
+ORDER BY f.first_year;
